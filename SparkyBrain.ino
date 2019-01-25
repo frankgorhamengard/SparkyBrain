@@ -231,7 +231,7 @@ int convertStickToServo(int stickValue) {
   return (int) longServoValue;
 }
 
-
+unsigned long int timeNow;
 //////////////  stop all activity if communications not working
 void disabledState(){
   // One or more conditions are not satisfied to allow the sparky to operate, disable all motors
@@ -247,14 +247,19 @@ void disabledState(){
   txdata.shooterspeedecho = -rxdata.shooterspeed; 
   isBallPresent();   // check ball for testing purposes
  
-  // do a fast blink
-  if ( lastBlinkToggle < millis()-200 ) { //if more than a 1/5 second ago
-    lastBlinkToggle = millis();  // triggered and reset.
-    if ( bitRead( PORTB,3) ) {   // this how to read an output pin
-      digitalWrite( LINK_STATUS_LED_11, LOW);
-    } else {
-      digitalWrite( LINK_STATUS_LED_11, HIGH);
+  // do a fast blink or intermitent fast blink if com is good
+  timeNow = millis();
+  if ( (messageDropCounter > 10) || (timeNow & 0x00000400 == 0) ) { 
+    if ( lastBlinkToggle < timeNow-256 ) { //if more than a 1/4 second ago
+      lastBlinkToggle = timeNow;  // triggered and reset.
+      if ( bitRead( PORTB,3) ) {   // this how to read an output pin
+        digitalWrite( LINK_STATUS_LED_11, LOW);
+      } else {
+        digitalWrite( LINK_STATUS_LED_11, HIGH);
+      }
     }
+  } else {
+    digitalWrite( LINK_STATUS_LED_11, HIGH); //off for odd second if com is good
   }
 }
 
