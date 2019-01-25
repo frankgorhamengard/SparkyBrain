@@ -11,7 +11,6 @@ Developed by Miss Daisy FRC Team 341
 #include <Servo.h>
 #include <EasyTransfer.h>
 #include <SparkyXfrBuffers.h>
-#include <NewPing.h>
 #include <EEPROM.h>
 
 // declare local mode routines
@@ -19,20 +18,20 @@ void enabledState(void);
 void disabledState(void);
 void calibrationAndTests(void);
 
-const int TRIGGER_PIN_10 = 10; // Arduino pin tied to trigger pin on the ultrasonic sensor.
-const int ECHO_PIN_8     =  8;      // Arduino pin tied to echo pin on the ultrasonic sensor.
-const int MAX_DISTANCE   = 80; // Maximum distance we want to ping for (in centimeters). Maximum sensor distance is rated at 400-500cm.
-const int BALL_DISTANCE  = 36;   // anything smaller means we see a ball
-
-NewPing sonar( TRIGGER_PIN_10, ECHO_PIN_8, MAX_DISTANCE); // NewPing constructor, sets pins and maximum distance.
+// declare and define Interrupt Service Routine //////  
+volatile byte caughtBallSensorPulse; 
+void catchBallSensorPulseISR(void) {
+  caughtBallSensorPulse = true;
+}
 
 //create two transfer objects
 EasyTransfer ETin, ETout; 
 
 //  global timing variables
-long unsigned int lastUpdateTime = 0; // asynchronous link verification 
-long unsigned int lastBlinkToggle = 0; // link status LED, follows its own definite timing
+unsigned long lastUpdateTime = 0; // asynchronous link verification 
+unsigned long lastBlinkToggle = 0; // link status LED, follows its own definite timing
 unsigned long afterCalDwellTimeEnd;
+unsigned long nextBallCheckTime;
 
 // filter accumulators
 int VIN_accum;
@@ -47,6 +46,7 @@ Servo rightDriveMotor;
 Servo intakeMotor;
 Servo conveyorMotor;
 Servo shooterMotor;
+Servo ballSensorEmitter;    
 
 // Servo ouptut is from 0 to 180
 const int servoHaltVal     = 90;   // 90 is no motion
@@ -66,12 +66,15 @@ int16_t shootSpeedKnobMin;
 TO_SPARKY_DATA_STRUCTURE rxdata;
 FROM_SPARKY_DATA_STRUCTURE txdata;
 
-const int BALL_OVERRIDE_2    =  2;
-const int TEST_SWITCH_4      =  4;
+const int INTERRUPT_PIN_2      = 2;
+const int TEST_SWITCH_4      = 4;
+const int BALL_OVERRIDE_8    = 8;
+const int TRIGGER_PIN_10     = 10;
 const int LINK_STATUS_LED_11 = 11; 
 const int LINK_DATA_TEST_12  = 12;
 const int LINK_DATA_LED_13   = 13;
 const int VIN_PIN_0          = 0;
+
 
 ///////////////////// SETUP, called once at start ///////////////////////////////////////////////
 void setup(){
@@ -96,26 +99,30 @@ void setup(){
   rxdata.stickRx = stickHaltVal;
   rxdata.stickRy = stickHaltVal;
   rxdata.stickRbutton = LOW;
-  rxdata.intake = LOW;      // the low active switchs on the panel are inverted before sending
+  rxdata.intake = LOW;      // the low active switches on the panel are inverted before sending
   rxdata.shoot = LOW;       // so now all 4 are high active
   rxdata.drivemode = LOW;
   rxdata.enabled = LOW;
   rxdata.counter = -1;
 
 // pin 0 is rx, 1 is tx - for serial port, not used as DIO
-                            pinMode( BALL_OVERRIDE_2, INPUT_PULLUP); // pin 2 used during test mode as ball override
+///   Servo pins   //////////     digital pins   /////////////////////////////////////
+                            pinMode(INTERRUPT_PIN_2, INPUT_PULLUP);
+                            attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN_2), catchBallSensorPulseISR, FALLING);
   leftDriveMotor.attach(3);
                             pinMode( TEST_SWITCH_4, INPUT_PULLUP);
   rightDriveMotor.attach(5);
   intakeMotor.attach(6);
   shooterMotor.attach(7);
-                            // pin 8 set to sonar sensor output, pinmode input, by newping constructor
+                            pinMode(BALL_OVERRIDE_8, INPUT_PULLUP);  //  pin 8 used during test mode as ball override
   conveyorMotor.attach(9);
-                            // pin 10 set to sonar sensor input, pinmode output, by newping constructor
+  ballSensorEmitter.attach(TRIGGER_PIN_10); // servo pulse output to trigger 1 ms burst of 38khz IR
                             pinMode(LINK_STATUS_LED_11, OUTPUT);  
                             pinMode(LINK_DATA_TEST_12, INPUT_PULLUP); // push_button for link data test
                             pinMode(LINK_DATA_LED_13, OUTPUT);       // link data test output
+
   disabledState();  // make sure everything is off
+  ballSensorEmitter.write(0);   //continuous output
 
   /////   sync with EEPROM
   EEPROM.get( minKnobAddr, shootSpeedKnobMin);  // read int in
@@ -133,8 +140,9 @@ void setup(){
   afterCalDwellTimeEnd = millis();  // setting to now means the dwell is over, no dwell required
 }
 
+///////    the MAIN asynchronous loop, called repeatedly    /////////////////////////////
 void loop(){
-  //each time we will unconditionally go ahead and send the data out
+  // each loop, we will unconditionally go ahead and send the data out
   txdata.transmitpacketcount++;
   ETout.sendData();
     
@@ -156,9 +164,8 @@ void loop(){
       messageDropCounter = 0;
     }
 
-    // pull rx data before checking state
     // Check that the sparky is safe to operate
-    if ( /*rxdata.counter > 0 &&*/ rxdata.enabled > 0 && messageDropCounter <= 10 ) {
+    if ( rxdata.enabled > 0 && messageDropCounter <= 10 ) {
 
       // An update was received recently, process the data packet
       enabledState();
@@ -171,7 +178,7 @@ void loop(){
     
     delay(10);   // delay between each read
   }
-    //delay for good measure before write routine
+  //delay for good measure before write routine
   delay(10);
 
   //  check for TEST mode
@@ -185,29 +192,20 @@ void loop(){
   // scale and filter the voltage reading, accum is 16 times reading
   VIN_accum = VIN_accum - (VIN_accum>>4)  + ((analogRead(VIN_PIN_0)*32)/20);
   txdata.supplyvoltagereading = VIN_accum>>4;
-   
-} // end of loop
 
-///////////////////  set ball presence  //////////////////
-boolean isBallPresent() {
-  int sonarDistance, ballReady;
-  sonarDistance = sonar.ping_cm();
-  ballReady = false;
-  if ( rxdata.enabled ) {
-    if ( sonarDistance <= BALL_DISTANCE || sonarDistance >= MAX_DISTANCE ) { // if ball is where it needs to be
-      ballReady = true;
+  // this is where we determine whether a ball is in the sensor, every 100 milliseconds synchronous
+  if (unsigned long timeNow = millis() > nextBallCheckTime) {
+    int i;
+    nextBallCheckTime = timeNow + 100;   //check every tenth of second
+    if (caughtBallSensorPulse) {
+      txdata.ballready = false;   // pulses are seen when ball is not blocking them
+    } else {
+      txdata.ballready = true;    // pulse are blocked, ball is present
     }
-    txdata.ballready = ballReady;
-    // when sensor is not working it says ball is present, need to say no ball to test system
-    // when sensor is working we need to say the ball is there to test the system
-    if ( !digitalRead(BALL_OVERRIDE_2) ) {   // LOW is active, invert ball present state
-      ballReady = !ballReady;
-    }
-  } else {  // not enabled
-    txdata.ballready = sonarDistance; // for testing, it is not referenced, just sent to panel
+    caughtBallSensorPulse = false;  // reset for next catch
   }
-  return ballReady;
-}
+  
+} // end of loop
 
 ///////////////////  apply stick profile  //////////////////
 // argument:   stick value from receive buffer, 0 - 1023
@@ -231,7 +229,7 @@ int convertStickToServo(int stickValue) {
   return (int) longServoValue;
 }
 
-unsigned long int timeNow;
+
 //////////////  stop all activity if communications not working
 void disabledState(){
   // One or more conditions are not satisfied to allow the sparky to operate, disable all motors
@@ -245,29 +243,33 @@ void disabledState(){
   conveyorMotor.write(servoHaltVal);
   shooterMotor.write(servoHaltVal);
   txdata.shooterspeedecho = -rxdata.shooterspeed; 
-  isBallPresent();   // check ball for testing purposes
  
   // do a fast blink or intermitent fast blink if com is good
+  static unsigned long periodLength;
+  unsigned long timeNow;
   timeNow = millis();
-  if ( (messageDropCounter > 10) || (timeNow & 0x00000400 == 0) ) { 
-    if ( lastBlinkToggle < timeNow-256 ) { //if more than a 1/4 second ago
-      lastBlinkToggle = timeNow;  // triggered and reset.
-      if ( bitRead( PORTB,3) ) {   // this how to read an output pin
-        digitalWrite( LINK_STATUS_LED_11, LOW);
+  if (  lastBlinkToggle + periodLength < timeNow ) {
+    lastBlinkToggle = timeNow;  // triggered and reset.
+    if ( bitRead( PORTB,3) ) {   // this how to read an output pin
+      digitalWrite( LINK_STATUS_LED_11, LOW);
+      // when LOW vary blink length based on if com is good
+      if ( messageDropCounter > 10 )  { 
+        periodLength = 200;
       } else {
-        digitalWrite( LINK_STATUS_LED_11, HIGH);
-      }
+        periodLength = 1500;
+      } 
+    } else {
+      digitalWrite( LINK_STATUS_LED_11, HIGH);
+      periodLength = 500;
     }
-  } else {
-    digitalWrite( LINK_STATUS_LED_11, HIGH); //off for odd second if com is good
   }
-}
+}  // end of disabled state
 
  
-unsigned long shootReleaseTime = 0;
 /////////////////////  enabledState   /////////////////////////////
 void enabledState(){
   int shooterSpeed, rawShooterSpeed;
+  static unsigned long shootReleaseTime;
   
   // If in the enabled state, the sparky bot is allowed to move 
 
@@ -320,7 +322,8 @@ void enabledState(){
   shooterSpeed = map(rawShooterSpeed, shootSpeedKnobMin, shootSpeedKnobMax, servoHaltVal+20, servoFullForeVal);
   txdata.shooterspeedecho = shooterSpeed;      // assigning shooterSpeed to echo for testing
   
-  if ( isBallPresent() ) {
+  // both operands converted to boolean and compared, this is a logical XOR operation, override inverts ballready
+  if ( (boolean)txdata.ballready == (boolean)digitalRead(BALL_OVERRIDE_8) ) {  // txdata.ballready is the stored synchronous result
     //  light the green ballLEDs   TBD
     
     // Run the shooter
@@ -442,8 +445,6 @@ void calibrationAndTests(){
     }
   }
  
-  isBallPresent();   // check ball for test  transmit purposes
-  
   // do a quick blink
   if ( lastBlinkToggle < millis()-200 ) { //if more than a 1/5 second ago
     lastBlinkToggle = millis();
