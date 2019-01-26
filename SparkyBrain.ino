@@ -1,7 +1,6 @@
-/*This is code for the Sparky Robot brain
+/*This is code for the Sparky Robot brain with IR ball sensor
 
 This sketch recieves command values from the control Panel to control the Sparky robot.
-It has a debug flag turned off for normal running.
 
 It has an LED to indcate link status
 
@@ -105,24 +104,27 @@ void setup(){
   rxdata.enabled = LOW;
   rxdata.counter = -1;
 
+const int myPulseWidthMax = 2000;
+const int myPulseWidthMin =1000;
+
 // pin 0 is rx, 1 is tx - for serial port, not used as DIO
 ///   Servo pins   //////////     digital pins   /////////////////////////////////////
                             pinMode(INTERRUPT_PIN_2, INPUT_PULLUP);
                             attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN_2), catchBallSensorPulseISR, FALLING);
-  leftDriveMotor.attach(3);
+  leftDriveMotor.attach(3,myPulseWidthMin,myPulseWidthMax);
                             pinMode( TEST_SWITCH_4, INPUT_PULLUP);
-  rightDriveMotor.attach(5);
-  intakeMotor.attach(6);
-  shooterMotor.attach(7);
+  rightDriveMotor.attach(5,myPulseWidthMin,myPulseWidthMax);
+  intakeMotor.attach(6,myPulseWidthMin,myPulseWidthMax);
+  shooterMotor.attach(7,myPulseWidthMin,myPulseWidthMax);
                             pinMode(BALL_OVERRIDE_8, INPUT_PULLUP);  //  pin 8 used during test mode as ball override
-  conveyorMotor.attach(9);
-  ballSensorEmitter.attach(TRIGGER_PIN_10); // servo pulse output to trigger 1 ms burst of 38khz IR
+  conveyorMotor.attach(9,myPulseWidthMin,myPulseWidthMax);
+  ballSensorEmitter.attach(TRIGGER_PIN_10,myPulseWidthMin,myPulseWidthMax); // servo pulse output to trigger 1 ms burst of 38khz IR
                             pinMode(LINK_STATUS_LED_11, OUTPUT);  
                             pinMode(LINK_DATA_TEST_12, INPUT_PULLUP); // push_button for link data test
                             pinMode(LINK_DATA_LED_13, OUTPUT);       // link data test output
 
   disabledState();  // make sure everything is off
-  ballSensorEmitter.write(0);   //continuous output
+  ballSensorEmitter.write(180);   //continuous output
 
   /////   sync with EEPROM
   EEPROM.get( minKnobAddr, shootSpeedKnobMin);  // read int in
@@ -142,6 +144,7 @@ void setup(){
 
 ///////    the MAIN asynchronous loop, called repeatedly    /////////////////////////////
 void loop(){
+  static unsigned long loopTimeNow;
   // each loop, we will unconditionally go ahead and send the data out
   txdata.transmitpacketcount++;
   ETout.sendData();
@@ -194,13 +197,19 @@ void loop(){
   txdata.supplyvoltagereading = VIN_accum>>4;
 
   // this is where we determine whether a ball is in the sensor, every 100 milliseconds synchronous
-  if (unsigned long timeNow = millis() > nextBallCheckTime) {
-    int i;
-    nextBallCheckTime = timeNow + 100;   //check every tenth of second
+  if ( (loopTimeNow = millis()) > nextBallCheckTime) {
+    static byte count;
+     nextBallCheckTime = loopTimeNow + 100;   //check every tenth of second
     if (caughtBallSensorPulse) {
+      count = 0;
+    } else {
+      count++;
+    }
+    if ( count < 5 ) {
       txdata.ballready = false;   // pulses are seen when ball is not blocking them
     } else {
       txdata.ballready = true;    // pulse are blocked, ball is present
+      count = 5;
     }
     caughtBallSensorPulse = false;  // reset for next catch
   }
@@ -232,6 +241,8 @@ int convertStickToServo(int stickValue) {
 
 //////////////  stop all activity if communications not working
 void disabledState(){
+  static unsigned long disTimeNow;
+  static unsigned long periodLength;
   // One or more conditions are not satisfied to allow the sparky to operate, disable all motors
 
   // Set all speed controllers to output 0V.
@@ -245,11 +256,9 @@ void disabledState(){
   txdata.shooterspeedecho = -rxdata.shooterspeed; 
  
   // do a fast blink or intermitent fast blink if com is good
-  static unsigned long periodLength;
-  unsigned long timeNow;
-  timeNow = millis();
-  if (  lastBlinkToggle + periodLength < timeNow ) {
-    lastBlinkToggle = timeNow;  // triggered and reset.
+  disTimeNow = millis();
+  if (  lastBlinkToggle + periodLength < disTimeNow ) {
+    lastBlinkToggle = disTimeNow;  // triggered and reset.
     if ( bitRead( PORTB,3) ) {   // this how to read an output pin
       digitalWrite( LINK_STATUS_LED_11, LOW);
       // when LOW vary blink length based on if com is good
