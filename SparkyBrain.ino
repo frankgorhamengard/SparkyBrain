@@ -328,7 +328,7 @@ void enabledState(){
     EEPROM.put( minKnobAddr, shootSpeedKnobMin);
   }
   // Map the potentiometer dial (min to max) to a valid positive shooter speed (90+20 to 180), 20 is min speed
-  shooterSpeed = map(rawShooterSpeed, shootSpeedKnobMin, shootSpeedKnobMax, servoHaltVal-20, servoFullBackVal);
+  shooterSpeed = map(rawShooterSpeed, shootSpeedKnobMin, shootSpeedKnobMax, servoHaltVal+20, servoFullForeVal);
   txdata.shooterspeedecho = shooterSpeed;      // assigning shooterSpeed to echo for testing
   
   // both operands converted to boolean and compared, this is a logical XOR operation, override inverts ballready
