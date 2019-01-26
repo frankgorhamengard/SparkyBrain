@@ -1,4 +1,0 @@
-/*
- * 
-by frankg and ajnedorezov 
- */
