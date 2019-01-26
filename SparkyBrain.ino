@@ -249,7 +249,7 @@ void disabledState(){
  
   // do a fast blink or intermitent fast blink if com is good
   timeNow = millis();
-  if ( (messageDropCounter > 10) || (timeNow & 0x00000400 == 0) ) { 
+  if ( (messageDropCounter > 10) || ((timeNow & 0x00000400) == 0) ) { 
     if ( lastBlinkToggle < timeNow-256 ) { //if more than a 1/4 second ago
       lastBlinkToggle = timeNow;  // triggered and reset.
       if ( bitRead( PORTB,3) ) {   // this how to read an output pin
@@ -293,11 +293,11 @@ void enabledState(){
   // Issue the commanded speed to the drive motors
   // both motors spin full clockwise for 180, left motor mounted opposite direction, so
   if ( txdata.leftmotorcommand != leftMotorSpeed ) {
-    leftDriveMotor.write(180 - leftMotorSpeed); // left wheel must spin opposite
+    leftDriveMotor.write(leftMotorSpeed); // left wheel must spin opposite
     txdata.leftmotorcommand = leftMotorSpeed;
   }
   if ( txdata.rightmotorcommand != rightMotorSpeed ) {
-    rightDriveMotor.write(rightMotorSpeed);
+    rightDriveMotor.write(180 - rightMotorSpeed);
     txdata.rightmotorcommand = rightMotorSpeed;
   }
   
@@ -317,7 +317,7 @@ void enabledState(){
     EEPROM.put( minKnobAddr, shootSpeedKnobMin);
   }
   // Map the potentiometer dial (min to max) to a valid positive shooter speed (90+20 to 180), 20 is min speed
-  shooterSpeed = map(rawShooterSpeed, shootSpeedKnobMin, shootSpeedKnobMax, servoHaltVal+20, servoFullForeVal);
+  shooterSpeed = map(rawShooterSpeed, shootSpeedKnobMin, shootSpeedKnobMax, servoHaltVal-20, servoFullBackVal);
   txdata.shooterspeedecho = shooterSpeed;      // assigning shooterSpeed to echo for testing
   
   if ( isBallPresent() ) {
