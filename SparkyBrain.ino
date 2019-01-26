@@ -249,7 +249,7 @@ void disabledState(){
  
   // do a fast blink or intermitent fast blink if com is good
   timeNow = millis();
-  if ( (messageDropCounter > 10) || ((timeNow & 0x00000400) == 0) ) { 
+  if ( (messageDropCounter > 10) || (timeNow & 0x00000400 == 0) ) { 
     if ( lastBlinkToggle < timeNow-256 ) { //if more than a 1/4 second ago
       lastBlinkToggle = timeNow;  // triggered and reset.
       if ( bitRead( PORTB,3) ) {   // this how to read an output pin
