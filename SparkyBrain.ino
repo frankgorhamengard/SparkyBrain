@@ -18,7 +18,7 @@ void disabledState(void);
 void calibrationAndTests(void);
 
 // declare and define Interrupt Service Routine //////  
-volatile byte caughtBallSensorPulse; 
+volatile boolean caughtBallSensorPulse; 
 void catchBallSensorPulseISR(void) {
   caughtBallSensorPulse = true;
 }
@@ -31,7 +31,8 @@ unsigned long lastUpdateTime = 0; // asynchronous link verification
 unsigned long lastBlinkToggle = 0; // link status LED, follows its own definite timing
 unsigned long afterCalDwellTimeEnd;
 unsigned long nextBallCheckTime;
-
+unsigned long loopTimeNow;
+ 
 // filter accumulators
 int VIN_accum;
 
@@ -118,13 +119,13 @@ const int myPulseWidthMin =1000;
   shooterMotor.attach(7,myPulseWidthMin,myPulseWidthMax);
                             pinMode(BALL_OVERRIDE_8, INPUT_PULLUP);  //  pin 8 used during test mode as ball override
   conveyorMotor.attach(9,myPulseWidthMin,myPulseWidthMax);
-  ballSensorEmitter.attach(TRIGGER_PIN_10,myPulseWidthMin,myPulseWidthMax); // servo pulse output to trigger 1 ms burst of 38khz IR
+  ballSensorEmitter.attach(TRIGGER_PIN_10,200,10000); // servo pulse output to trigger 1 ms burst of 38khz IR
                             pinMode(LINK_STATUS_LED_11, OUTPUT);  
                             pinMode(LINK_DATA_TEST_12, INPUT_PULLUP); // push_button for link data test
                             pinMode(LINK_DATA_LED_13, OUTPUT);       // link data test output
 
   disabledState();  // make sure everything is off
-  ballSensorEmitter.write(180);   //continuous output
+  ballSensorEmitter.writeMicroseconds(10000);   //continuous pulsing output
 
   /////   sync with EEPROM
   EEPROM.get( minKnobAddr, shootSpeedKnobMin);  // read int in
@@ -144,7 +145,7 @@ const int myPulseWidthMin =1000;
 
 ///////    the MAIN asynchronous loop, called repeatedly    /////////////////////////////
 void loop(){
-  static unsigned long loopTimeNow;
+ 
   // each loop, we will unconditionally go ahead and send the data out
   txdata.transmitpacketcount++;
   ETout.sendData();
@@ -196,8 +197,9 @@ void loop(){
   VIN_accum = VIN_accum - (VIN_accum>>4)  + ((analogRead(VIN_PIN_0)*32)/20);
   txdata.supplyvoltagereading = VIN_accum>>4;
 
+  loopTimeNow = millis();
   // this is where we determine whether a ball is in the sensor, every 100 milliseconds synchronous
-  if ( (loopTimeNow = millis()) > nextBallCheckTime) {
+  if ( loopTimeNow > nextBallCheckTime) {
     static byte count;
      nextBallCheckTime = loopTimeNow + 100;   //check every tenth of second
     if (caughtBallSensorPulse) {
@@ -205,11 +207,11 @@ void loop(){
     } else {
       count++;
     }
-    if ( count < 5 ) {
+    if ( count < 20 ) {
       txdata.ballready = false;   // pulses are seen when ball is not blocking them
     } else {
       txdata.ballready = true;    // pulse are blocked, ball is present
-      count = 5;
+      count = 21;
     }
     caughtBallSensorPulse = false;  // reset for next catch
   }
@@ -332,7 +334,7 @@ void enabledState(){
   txdata.shooterspeedecho = shooterSpeed;      // assigning shooterSpeed to echo for testing
   
   // both operands converted to boolean and compared, this is a logical XOR operation, override inverts ballready
-  if ( (boolean)txdata.ballready == (boolean)digitalRead(BALL_OVERRIDE_8) ) {  // txdata.ballready is the stored synchronous result
+  if ( (boolean)txdata.ballready ) { //== (boolean)digitalRead(BALL_OVERRIDE_8) ) {  // txdata.ballready is the stored synchronous result
     //  light the green ballLEDs   TBD
     
     // Run the shooter
