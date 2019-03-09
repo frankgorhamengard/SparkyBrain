@@ -18,10 +18,10 @@ void disabledState(void);
 void calibrationAndTests(void);
 
 // declare and define Interrupt Service Routine //////  
-volatile boolean caughtBallSensorPulse; 
-void catchBallSensorPulseISR(void) {
-  caughtBallSensorPulse = true;
-}
+//volatile boolean caughtBallSensorPulse; 
+//void catchBallSensorPulseISR(void) {
+//  caughtBallSensorPulse = true;
+//}
 
 //create two transfer objects
 EasyTransfer ETin, ETout; 
@@ -46,7 +46,7 @@ Servo rightDriveMotor;
 Servo intakeMotor;
 Servo conveyorMotor;
 Servo shooterMotor;
-Servo ballSensorEmitter;    
+//Servo ballSensorEmitter;    
 
 // Servo ouptut is from 0 to 180
 const int servoHaltVal     = 90;   // 90 is no motion
@@ -111,7 +111,7 @@ const int myPulseWidthMin =1000;
 // pin 0 is rx, 1 is tx - for serial port, not used as DIO
 ///   Servo pins   //////////     digital pins   /////////////////////////////////////
                             pinMode(INTERRUPT_PIN_2, INPUT_PULLUP);
-                            attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN_2), catchBallSensorPulseISR, FALLING);
+//                            attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN_2), catchBallSensorPulseISR, FALLING);
   leftDriveMotor.attach(3,myPulseWidthMin,myPulseWidthMax);
                             pinMode( TEST_SWITCH_4, INPUT_PULLUP);
   rightDriveMotor.attach(5,myPulseWidthMin,myPulseWidthMax);
@@ -119,13 +119,14 @@ const int myPulseWidthMin =1000;
   shooterMotor.attach(7,myPulseWidthMin,myPulseWidthMax);
                             pinMode(BALL_OVERRIDE_8, INPUT_PULLUP);  //  pin 8 used during test mode as ball override
   conveyorMotor.attach(9,myPulseWidthMin,myPulseWidthMax);
-  ballSensorEmitter.attach(TRIGGER_PIN_10,200,10000); // servo pulse output to trigger 1 ms burst of 38khz IR
+//  ballSensorEmitter.attach(TRIGGER_PIN_10,200,10000); // servo pulse output to trigger 1 ms burst of 38khz IR
+                            pinMode(TRIGGER_PIN_10, output);  //  
                             pinMode(LINK_STATUS_LED_11, OUTPUT);  
                             pinMode(LINK_DATA_TEST_12, INPUT_PULLUP); // push_button for link data test
                             pinMode(LINK_DATA_LED_13, OUTPUT);       // link data test output
 
   disabledState();  // make sure everything is off
-  ballSensorEmitter.writeMicroseconds(10000);   //continuous pulsing output
+//  ballSensorEmitter.writeMicroseconds(10000);   //continuous pulsing output
 
   /////   sync with EEPROM
   EEPROM.get( minKnobAddr, shootSpeedKnobMin);  // read int in
@@ -141,6 +142,8 @@ const int myPulseWidthMin =1000;
 
   rxdata.shooterspeed = shootSpeedKnobMin; //  lowest known speed
   afterCalDwellTimeEnd = millis();  // setting to now means the dwell is over, no dwell required
+
+  digitalWrite( TRIGGER_PIN_10, LOW);  // this turns on power to the HC-05
 }
 
 ///////    the MAIN asynchronous loop, called repeatedly    /////////////////////////////
@@ -201,19 +204,19 @@ void loop(){
   // this is where we determine whether a ball is in the sensor, every 100 milliseconds synchronous
   if ( loopTimeNow > nextBallCheckTime) {
     static byte count;
-     nextBallCheckTime = loopTimeNow + 100;   //check every tenth of second
-    if (caughtBallSensorPulse) {
-      count = 0;
+     nextBallCheckTime = loopTimeNow + 50;   //check every tenth of second
+    if ( !digitalRead( INTERRUPT_PIN_2) ) {
+//      count = 0;
+//    } else {
+//      count++;
+//    }
+//    if ( count < 2 ) {
+      txdata.ballready = false;   // IR seen when ball is not blocking 
     } else {
-      count++;
+      txdata.ballready = true;    // IR blocked, ball is present
+      count = 5;
     }
-    if ( count < 20 ) {
-      txdata.ballready = false;   // pulses are seen when ball is not blocking them
-    } else {
-      txdata.ballready = true;    // pulse are blocked, ball is present
-      count = 21;
-    }
-    caughtBallSensorPulse = false;  // reset for next catch
+//    caughtBallSensorPulse = false;  // reset for next catch
   }
   
 } // end of loop
@@ -457,13 +460,13 @@ void calibrationAndTests(){
   }
  
   // do a quick blink
-  if ( lastBlinkToggle < millis()-200 ) { //if more than a 1/5 second ago
+  if ( lastBlinkToggle < millis()-100 ) { //if more than a 1/5 second ago
     lastBlinkToggle = millis();
     static int interval = 0;
     if ( !bitRead( PORTB,3) ) {   // this how to read an output pin
       digitalWrite( LINK_STATUS_LED_11, HIGH);
     } else {
-      if ( ++interval > 5 ) {
+      if ( ++interval > 12 ) {
         digitalWrite( LINK_STATUS_LED_11, LOW);
         interval = 0;
       }
