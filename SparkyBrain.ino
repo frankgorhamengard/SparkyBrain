@@ -66,10 +66,10 @@ int16_t shootSpeedKnobMin;
 TO_SPARKY_DATA_STRUCTURE rxdata;
 FROM_SPARKY_DATA_STRUCTURE txdata;
 
-const int INTERRUPT_PIN_2      = 2;
-const int TEST_SWITCH_4      = 4;
-const int BALL_OVERRIDE_8    = 8;
-const int TRIGGER_PIN_10     = 10;
+const int BALL_OVERRIDE_2      = 2;
+const int TEST_SWITCH2_PIN_4      = 4;
+const int HC05_POWER_LOW_ON_8    = 8;
+const int BALL_SEEN_10     = 10;
 const int LINK_STATUS_LED_11 = 11; 
 const int LINK_DATA_TEST_12  = 12;
 const int LINK_DATA_LED_13   = 13;
@@ -110,17 +110,16 @@ const int myPulseWidthMin =1000;
 
 // pin 0 is rx, 1 is tx - for serial port, not used as DIO
 ///   Servo pins   //////////     digital pins   /////////////////////////////////////
-                            pinMode(INTERRUPT_PIN_2, INPUT_PULLUP);
-//                            attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN_2), catchBallSensorPulseISR, FALLING);
+                            pinMode(BALL_OVERRIDE_2, INPUT_PULLUP);
   leftDriveMotor.attach(3,myPulseWidthMin,myPulseWidthMax);
-                            pinMode( TEST_SWITCH_4, INPUT_PULLUP);
+                            pinMode( TEST_SWITCH2_PIN_4, INPUT_PULLUP);
   rightDriveMotor.attach(5,myPulseWidthMin,myPulseWidthMax);
   intakeMotor.attach(6,myPulseWidthMin,myPulseWidthMax);
   shooterMotor.attach(7,myPulseWidthMin,myPulseWidthMax);
-                            pinMode(BALL_OVERRIDE_8, INPUT_PULLUP);  //  pin 8 used during test mode as ball override
+                           digitalWrite( HC05_POWER_LOW_ON_8, HIGH);  // make sure the HC-05 power starts out off 
+                           pinMode(HC05_POWER_LOW_ON_8, OUTPUT);  //  pin 8 used to power on Bluetooth module
   conveyorMotor.attach(9,myPulseWidthMin,myPulseWidthMax);
-//  ballSensorEmitter.attach(TRIGGER_PIN_10,200,10000); // servo pulse output to trigger 1 ms burst of 38khz IR
-                            pinMode(TRIGGER_PIN_10, output);  //  
+                            pinMode(BALL_SEEN_10, INPUT_PULLUP);  //  
                             pinMode(LINK_STATUS_LED_11, OUTPUT);  
                             pinMode(LINK_DATA_TEST_12, INPUT_PULLUP); // push_button for link data test
                             pinMode(LINK_DATA_LED_13, OUTPUT);       // link data test output
@@ -143,7 +142,7 @@ const int myPulseWidthMin =1000;
   rxdata.shooterspeed = shootSpeedKnobMin; //  lowest known speed
   afterCalDwellTimeEnd = millis();  // setting to now means the dwell is over, no dwell required
 
-  digitalWrite( TRIGGER_PIN_10, LOW);  // this turns on power to the HC-05
+  digitalWrite( HC05_POWER_LOW_ON_8, LOW);  // this turns on power to the HC-05
 }
 
 ///////    the MAIN asynchronous loop, called repeatedly    /////////////////////////////
@@ -189,7 +188,7 @@ void loop(){
   delay(10);
 
   //  check for TEST mode
-  if ( !digitalRead( TEST_SWITCH_4)  ) {  // LOW is active
+  if ( !digitalRead( TEST_SWITCH2_PIN_4)  ) {  // LOW is active
     txdata.buttonstate = !digitalRead( LINK_DATA_TEST_12 ); // when active send pin 12
     calibrationAndTests();      // run testing routine, returns immediately unless cal is signaled
   } else {
@@ -204,21 +203,25 @@ void loop(){
   // this is where we determine whether a ball is in the sensor, every 100 milliseconds synchronous
   if ( loopTimeNow > nextBallCheckTime) {
     static byte count;
-     nextBallCheckTime = loopTimeNow + 50;   //check every tenth of second
-    if ( !digitalRead( INTERRUPT_PIN_2) ) {
-//      count = 0;
-//    } else {
-//      count++;
-//    }
-//    if ( count < 2 ) {
-      txdata.ballready = false;   // IR seen when ball is not blocking 
-    } else {
-      txdata.ballready = true;    // IR blocked, ball is present
-      count = 5;
+    nextBallCheckTime = loopTimeNow + 50;   //check every tenth of second
+    if ( !digitalRead( BALL_SEEN_10) ) {  // if ball not seen
+      if ( txdata.ballready == true ) {
+        if ( ++count > 1 ) {
+          txdata.ballready = false;;
+        } 
+      } else {                                  //// debouncing code, one count
+        count = 0;  
+      }
+    } else {   // ball seen
+      if ( txdata.ballready == false ) {
+        if ( ++count > 1 ) {
+          txdata.ballready = true;;
+        } 
+      } else {
+        count = 0;  
+      }
     }
-//    caughtBallSensorPulse = false;  // reset for next catch
   }
-  
 } // end of loop
 
 ///////////////////  apply stick profile  //////////////////
@@ -337,7 +340,7 @@ void enabledState(){
   txdata.shooterspeedecho = shooterSpeed;      // assigning shooterSpeed to echo for testing
   
   // both operands converted to boolean and compared, this is a logical XOR operation, override inverts ballready
-  if ( (boolean)txdata.ballready ) { //== (boolean)digitalRead(BALL_OVERRIDE_8) ) {  // txdata.ballready is the stored synchronous result
+  if ( (boolean)txdata.ballready ) { //== (boolean)digitalRead(BALL_OVERRIDE_2) ) {  // txdata.ballready is the stored synchronous result
     //  light the green ballLEDs   TBD
     
     // Run the shooter
