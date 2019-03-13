@@ -340,7 +340,7 @@ void enabledState(){
   txdata.shooterspeedecho = shooterSpeed;      // assigning shooterSpeed to echo for testing
   
   // both operands converted to boolean and compared, this is a logical XOR operation, override inverts ballready
-  if ( (boolean)txdata.ballready ) { //== (boolean)digitalRead(BALL_OVERRIDE_2) ) {  // txdata.ballready is the stored synchronous result
+  if ( (boolean)txdata.ballready == (boolean)digitalRead(BALL_OVERRIDE_2) ) {  // txdata.ballready is the stored synchronous result
     //  light the green ballLEDs   TBD
     
     // Run the shooter
