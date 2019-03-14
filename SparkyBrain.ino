@@ -69,8 +69,8 @@ FROM_SPARKY_DATA_STRUCTURE txdata;
 const int BALL_OVERRIDE_2      = 2;
 const int TEST_SWITCH2_PIN_4      = 4;
 const int HC05_POWER_LOW_ON_8    = 8;
-const int BALL_SEEN_10     = 10;
-const int LINK_STATUS_LED_11 = 11; 
+const int BALL_SEEN_10     = 10;     // IR receiver, HIGH when no IR seen (when ball present)
+const int LINK_STATUS_LED_11 = 11;   // IR transmitter is plugged in to 11 to get power, no connection to signal
 const int LINK_DATA_TEST_12  = 12;
 const int LINK_DATA_LED_13   = 13;
 const int VIN_PIN_0          = 0;
@@ -336,7 +336,7 @@ void enabledState(){
     EEPROM.put( minKnobAddr, shootSpeedKnobMin);
   }
   // Map the potentiometer dial (min to max) to a valid positive shooter speed (90+20 to 180), 20 is min speed
-  shooterSpeed = map(rawShooterSpeed, shootSpeedKnobMin, shootSpeedKnobMax, servoHaltVal+20, servoFullForeVal);
+  shooterSpeed = map(rawShooterSpeed, shootSpeedKnobMin, shootSpeedKnobMax, servoHaltVal-20, servoFullBackVal);
   txdata.shooterspeedecho = shooterSpeed;      // assigning shooterSpeed to echo for testing
   
   // both operands converted to boolean and compared, this is a logical XOR operation, override inverts ballready
