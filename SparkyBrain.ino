@@ -271,7 +271,7 @@ void disabledState(){
       digitalWrite( LINK_STATUS_LED_11, LOW);
       // when LOW vary blink length based on if com is good
       if ( messageDropCounter > 10 )  { 
-        periodLength = 200;
+        periodLength = 100;
       } else {
         periodLength = 1500;
       } 
@@ -469,7 +469,7 @@ void calibrationAndTests(){
     if ( !bitRead( PORTB,3) ) {   // this how to read an output pin
       digitalWrite( LINK_STATUS_LED_11, HIGH);
     } else {
-      if ( ++interval > 12 ) {
+      if ( ++interval > 20 ) {
         digitalWrite( LINK_STATUS_LED_11, LOW);
         interval = 0;
       }
