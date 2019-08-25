@@ -1,4 +1,5 @@
 /*This is code for the Sparky Robot brain with IR ball sensor
+ * From SparkyProjects
 
 This sketch recieves command values from the control Panel to control the Sparky robot.
 
@@ -73,7 +74,7 @@ const int BALL_SEEN_10     = 10;     // IR receiver, HIGH when no IR seen (when 
 const int LINK_STATUS_LED_11 = 11;   // IR transmitter is plugged in to 11 to get power, no connection to signal
 const int LINK_DATA_TEST_12  = 12;
 const int LINK_DATA_LED_13   = 13;
-const int VIN_PIN_0          = 0;
+const int VIN_PIN_A0          = A0;
 
 
 ///////////////////// SETUP, called once at start ///////////////////////////////////////////////
@@ -81,6 +82,8 @@ void setup(){
   // Serial is connected throught the Bluetooth modules to the master
   Serial.begin(9600);
   while (!Serial) ; // wait for serial port to connect. Needed for native USB
+  // print this before the HC-05 is connected so we can connect a computer and see what code it is.
+  Serial.write("Code for the Sparky Robot brain with IR ball sensor 20190730");
 
   //start the library, pass in the data details and the name of the serial port.
   ETin.begin(details(rxdata), &Serial);
@@ -88,7 +91,7 @@ void setup(){
 
   // set transmitter buffer to default values
   txdata.buttonstate = HIGH;
-  txdata.supplyvoltagereading = analogRead(VIN_PIN_0);
+  txdata.supplyvoltagereading = analogRead(VIN_PIN_A0);
   txdata.ballready = false;
   txdata.packetreceivedcount = 0;
 
@@ -196,7 +199,7 @@ void loop(){
   }
 
   // scale and filter the voltage reading, accum is 16 times reading
-  VIN_accum = VIN_accum - (VIN_accum>>4)  + ((analogRead(VIN_PIN_0)*32)/20);
+  VIN_accum = VIN_accum - (VIN_accum>>4)  + ((analogRead(VIN_PIN_A0)*32)/20);
   txdata.supplyvoltagereading = VIN_accum>>4;
 
   loopTimeNow = millis();
@@ -352,9 +355,18 @@ void enabledState(){
         // Stop the conveyor
         conveyorMotor.write(servoHaltVal);
       }
+      else
+      {     // shoot in progress, button not pressed, but ball still present = extend time ubtil after ball is moved
+        shootReleaseTime = millis() + 1500; 
+      }
     }
-    intakeMotor.write(servoHaltVal);   // in case this is first time seeing ball
-    
+    if (rxdata.intake > 0){  // intake button pressed 
+      // Run the intake for loading extra balls, control only the intake, not the conveyor
+      intakeMotor.write(servoFullBackVal);
+    } else {
+      // Stop the intake
+      intakeMotor.write(servoHaltVal);
+    }
   } else {   // no ball   //////////////
     // turn ballLEDs off TBD
     
