@@ -6,8 +6,8 @@ This sketch recieves command values from the control Panel to control the Sparky
 It has an LED to indcate link status
 
 Developed by Miss Daisy FRC Team 341
- 
 */
+
 #include <Servo.h>
 #include <EasyTransfer.h>
 #include <SparkyXfrBuffers.h>
@@ -17,12 +17,6 @@ Developed by Miss Daisy FRC Team 341
 void enabledState(void);
 void disabledState(void);
 void calibrationAndTests(void);
-
-// declare and define Interrupt Service Routine //////  
-//volatile boolean caughtBallSensorPulse; 
-//void catchBallSensorPulseISR(void) {
-//  caughtBallSensorPulse = true;
-//}
 
 //create two transfer objects
 EasyTransfer ETin, ETout; 
@@ -47,7 +41,6 @@ Servo rightDriveMotor;
 Servo intakeMotor;
 Servo conveyorMotor;
 Servo shooterMotor;
-//Servo ballSensorEmitter;    
 
 // Servo ouptut is from 0 to 180
 const int servoHaltVal     = 90;   // 90 is no motion
@@ -83,7 +76,7 @@ void setup(){
   Serial.begin(9600);
   while (!Serial) ; // wait for serial port to connect. Needed for native USB
   // print this before the HC-05 is connected so we can connect a computer and see what code it is.
-  Serial.write("Code for the Sparky Robot brain with IR ball sensor 20190730");
+  Serial.write("Code for the Sparky Robot brain with IR ball sensor 20190824");
 
   //start the library, pass in the data details and the name of the serial port.
   ETin.begin(details(rxdata), &Serial);
@@ -128,7 +121,6 @@ const int myPulseWidthMin =1000;
                             pinMode(LINK_DATA_LED_13, OUTPUT);       // link data test output
 
   disabledState();  // make sure everything is off
-//  ballSensorEmitter.writeMicroseconds(10000);   //continuous pulsing output
 
   /////   sync with EEPROM
   EEPROM.get( minKnobAddr, shootSpeedKnobMin);  // read int in
@@ -323,12 +315,11 @@ void enabledState(){
     txdata.rightmotorcommand = rightMotorSpeed;
   }
   
-///////  BELT FUNCTIONS: ONLY ENABLED WHEN BALL IS NOT IN SHOOTER  ////////////
-//      SHOOTER FUNCTIONS: ONLY ENABLED WHEN BALL IS IN SHOOTER
+///////  INTAKE FUNCTIONS: INTAKE ALWAYS ENABLED, LOADER ONLY ENABLED WHEN BALL IS NOT IN SHOOTER  ////////////
+//      SHOOTER FUNCTIONS: LOADER ONLY ENABLED WHEN BALL IS IN SHOOTER
 
   ///////  calculate shooter wheel speed    ////////////
-  // NOTE:  speed knob is wired so max (cw) is near 0 and min (ccw) is near 1023
-  // when transmitted it has aleady been inverted so 1023 is highest speed, 0 is lowest
+  // 1023 is highest speed, 0 is lowest
   rawShooterSpeed = rxdata.shooterspeed; // a natural 0 low, 1023 high
   if ( rawShooterSpeed > shootSpeedKnobMax  ) { //recalibrate, first time seeing value this high
     shootSpeedKnobMax = rawShooterSpeed;
@@ -487,4 +478,4 @@ void calibrationAndTests(){
       }
     }
   }  // end of blink
-} // end of function
+} // end of function calibrationAndTests
