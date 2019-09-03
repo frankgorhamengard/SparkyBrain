@@ -65,7 +65,7 @@ const int TEST_SWITCH2_PIN_4      = 4;
 const int HC05_POWER_LOW_ON_8    = 8;
 const int BALL_SEEN_10     = 10;     // IR receiver, HIGH when no IR seen (when ball present)
 const int LINK_STATUS_LED_11 = 11;   // IR transmitter is plugged in to 11 to get power, no connection to signal
-const int LINK_DATA_TEST_12  = 12;
+const int GREEN_SHOOT_LED_12  = 12;
 const int LINK_DATA_LED_13   = 13;
 const int VIN_PIN_A0          = A0;
 
@@ -117,7 +117,7 @@ const int myPulseWidthMin =1000;
   conveyorMotor.attach(9,myPulseWidthMin,myPulseWidthMax);
                             pinMode(BALL_SEEN_10, INPUT_PULLUP);  //  
                             pinMode(LINK_STATUS_LED_11, OUTPUT);  
-                            pinMode(LINK_DATA_TEST_12, INPUT_PULLUP); // push_button for link data test
+                            pinMode(GREEN_SHOOT_LED_12, OUTPUT); // drive signal for spike on green LEDs
                             pinMode(LINK_DATA_LED_13, OUTPUT);       // link data test output
 
   disabledState();  // make sure everything is off
@@ -184,7 +184,7 @@ void loop(){
 
   //  check for TEST mode
   if ( !digitalRead( TEST_SWITCH2_PIN_4)  ) {  // LOW is active
-    txdata.buttonstate = !digitalRead( LINK_DATA_TEST_12 ); // when active send pin 12
+    txdata.buttonstate = MCUCR; // instead of buttonstate, reuse to read register , for no particular reason
     calibrationAndTests();      // run testing routine, returns immediately unless cal is signaled
   } else {
     txdata.buttonstate = -1;  // TEST not active
@@ -224,7 +224,7 @@ void loop(){
 // Return:     servo value, 0-179, scaled and profile applied
 // profile:   Apply a deadband to all joystick values so that 
 //            anything between +/-50 from stick center is converted to servo center.
-const long int deadband = 50;
+const long int deadband = 10;
 //------------------------------------------------
 int convertStickToServo(int stickValue) {
   long int longServoValue;  // use longs, 180*1024 > 32768
@@ -242,7 +242,7 @@ int convertStickToServo(int stickValue) {
 }
 
 
-//////////////  stop all activity if communications not working
+//////////////  stop all activity if communications not working or disabled
 void disabledState(){
   static unsigned long disTimeNow;
   static unsigned long periodLength;
@@ -257,6 +257,7 @@ void disabledState(){
   conveyorMotor.write(servoHaltVal);
   shooterMotor.write(servoHaltVal);
   txdata.shooterspeedecho = -rxdata.shooterspeed; 
+  digitalWrite( GREEN_SHOOT_LED_12, 0 );   // 0 is off
  
   // do a fast blink or intermitent fast blink if com is good
   disTimeNow = millis();
@@ -336,7 +337,7 @@ void enabledState(){
   // both operands converted to boolean and compared, this is a logical XOR operation, override inverts ballready
   if ( (boolean)txdata.ballready == (boolean)digitalRead(BALL_OVERRIDE_2) ) {  // txdata.ballready is the stored synchronous result
     //  light the green ballLEDs   TBD
-    
+    digitalWrite( GREEN_SHOOT_LED_12, 1 );   // 1 is on
     // Run the shooter
     shooterMotor.write(shooterSpeed);
     if (rxdata.shoot > 0 ) {    // shooter button pressed
@@ -359,8 +360,8 @@ void enabledState(){
       intakeMotor.write(servoHaltVal);
     }
   } else {   // no ball   //////////////
-    // turn ballLEDs off TBD
-    
+    // turn green LEDs off
+    digitalWrite( GREEN_SHOOT_LED_12, 0 );   // 0 is off
     shooterMotor.write(servoHaltVal);   ///off shooterSpeed);
     txdata.shooterspeedecho = servoHaltVal;
     if (rxdata.intake > 0){  // intake button pressed 
@@ -382,6 +383,7 @@ void enabledState(){
     conveyorMotor.write(servoFullBackVal);
     // ball may be gone from sensor, but shoot still in progress, run shooter motor
     shooterMotor.write(shooterSpeed);  
+    digitalWrite( GREEN_SHOOT_LED_12, 1 );   // 1 is on
   }
   
   // do a slow blink to show enabled and running
