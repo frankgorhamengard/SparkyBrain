@@ -283,19 +283,34 @@ void disabledState(){
 void enabledState(){
   int shooterSpeed, rawShooterSpeed;
   static unsigned long shootReleaseTime;
+  static int updownVal;
   
-  // If in the enabled state, the sparky bot is allowed to move 
+  if (txdata.leftmotorcommand == servoHaltVal) {
+    updownVal = 512;  //reset, it looks like we just entered enabled mode
+  }
+   
+   
+   // If in the enabled state, the sparky bot is allowed to move 
 
+  // get and filter the stick values
+  int newupdownValDif = rxdata.stickLx - updownVal;
+  if ( newupdownValDif > 1 ) newupdownValDif = 1;
+  if ( newupdownValDif < -1 ) newupdownValDif = -1;
+  if ( updownVal < 522 && updownVal >502 )
+    updownVal += newupdownValDif*64;
+  else
+    updownVal += newupdownValDif;
+  
   // Steer the robot based on selected drive mode
   int leftMotorSpeed = servoHaltVal;
   int rightMotorSpeed = servoHaltVal;
   if (rxdata.drivemode < 1){
     // Tank Mode - left joystick control left drive, right joystick controls right drive
-    leftMotorSpeed  = convertStickToServo(rxdata.stickLx); 
+    leftMotorSpeed  = convertStickToServo(updownVal); 
     rightMotorSpeed = convertStickToServo(rxdata.stickRx);
   } else {
     // Arcade Mode - left joystick controls speed, right joystick controls turning
-    int speedVal = convertStickToServo(rxdata.stickLx); 
+    int speedVal = convertStickToServo(updownVal);
     int  turnVal = convertStickToServo(rxdata.stickRy);
     leftMotorSpeed  = speedVal + turnVal - 90;
     rightMotorSpeed = speedVal - turnVal + 90;
@@ -303,7 +318,7 @@ void enabledState(){
     if ( leftMotorSpeed < 0  ) leftMotorSpeed  = 0;    // eg.   0   + 0   - 90
     if ( leftMotorSpeed > 180) leftMotorSpeed  = 180;  // eg.   180 + 180 - 90
     if (rightMotorSpeed < 0  ) rightMotorSpeed = 0;    // eg.   0   - 180 + 90
-    if (rightMotorSpeed > 180) rightMotorSpeed = 180;   // eg.   180 - 0   + 90
+    if (rightMotorSpeed > 180) rightMotorSpeed = 180;  // eg.   180 - 0   + 90
   }
   // Issue the commanded speed to the drive motors
   // both motors spin full clockwise for 180, left motor mounted opposite direction, so
