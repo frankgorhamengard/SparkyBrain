@@ -471,6 +471,10 @@ void doCalibrationSweep( Servo *theservo ) {   // note that this routine is bloc
   delay(1000);   // allow controller to store center value
   digitalWrite( LINK_STATUS_LED_11,  HIGH ); // flip the LED off to end
   // make a calibration done sound  TBD
+  delay(3000);    //before going back to test mode allow time for operator to release the CAL button
+  // comm was down during calibration so make sure these are off to prevent retrigger
+  rxdata.intake = LOW;      // the low active switches on the panel are inverted before sending
+  rxdata.shoot = LOW;       // so now all 4 are high active
 }
 
 //  ////////////////   SW 2 is on, test mode.     //////////////
