@@ -15,7 +15,7 @@ Developed by Miss Daisy FRC Team 341
 
 // declare local mode routines
 void enabledState(void);
-void disabledState(void);
+void notEnabledState(void);
 void calibrationAndTests(void);
 
 //create two transfer objects
@@ -34,6 +34,10 @@ int VIN_accum;
 // Message count tracking
 long int lastMessageCounter = 0;
 long int messageDropCounter = 1000;
+unsigned long commOpTime = millis();
+
+// Enable flags
+boolean commGoodFlag = false;
 
 //  declare servo objects
 Servo leftDriveMotor;
@@ -120,7 +124,7 @@ const int myPulseWidthMin =1000;
                             pinMode(GREEN_SHOOT_LED_12, OUTPUT); // drive signal for spike on green LEDs
                             pinMode(LINK_DATA_LED_13, OUTPUT);       // link data test output
 
-  disabledState();  // make sure everything is off
+  notEnabledState();  // make sure everything is off
 
   /////   sync with EEPROM
   EEPROM.get( minKnobAddr, shootSpeedKnobMin);  // read int in
@@ -137,51 +141,67 @@ const int myPulseWidthMin =1000;
   rxdata.shooterspeed = shootSpeedKnobMin; //  lowest known speed
   afterCalDwellTimeEnd = millis();  // setting to now means the dwell is over, no dwell required
 
+  commGoodFlag = false;
+
   digitalWrite( HC05_POWER_LOW_ON_8, LOW);  // this turns on power to the HC-05
 }
 
 ///////    the MAIN asynchronous loop, called repeatedly    /////////////////////////////
 void loop(){
- 
-  // each loop, we will unconditionally go ahead and send the data out
-  txdata.transmitpacketcount++;
-  ETout.sendData();
-    
-  //there's a loop here so that we run the recieve function more often then the 
-  //transmit function. This is important due to the slight differences in 
-  //the clock speed of different Arduinos. If we didn't do this, messages 
-  //would build up in the buffer and appear to cause a delay.
- 
-  for(int i=0; i<5; i++){
-    // Check if new data packets were received
+
+  unsigned long now = millis();
+  if ( now > commOpTime ) {
+    commOpTime = now + 60;
+      
+    // we run the recieve function more often then the transmit function. 
+    // This is important due to the slight differences in 
+    // the clock speed of different Arduinos. If we didn't do this, messages 
+    // would build up in the buffer and appear to cause a delay.
+  
+    // first Check if new data packets were received
+    if ( ETin.receiveData() ) {
+      txdata.packetreceivedcount++;
+      lastUpdateTime = millis();
+    } else {
+      delay(10);   // wait a bit if no packet yet, resync to control
+      if (ETin.receiveData()){
+        txdata.packetreceivedcount++;
+        lastUpdateTime = millis();
+      }
+    }
+    // Check again in case 2 packets were waiting
     if (ETin.receiveData()){
       txdata.packetreceivedcount++;
       lastUpdateTime = millis();
     }
-    
+      
+    // each time, we will unconditionally go ahead and send the data out
+    txdata.transmitpacketcount++;
+    ETout.sendData();
+
+    //  check the received data
     if ((rxdata.counter - lastMessageCounter) == 0){
       messageDropCounter += 1;
     }else{
       messageDropCounter = 0;
     }
-
-    // Check that the sparky is safe to operate
-    if ( rxdata.enabled > 0 && messageDropCounter <= 10 ) {
-
-      // An update was received recently, process the data packet
-      enabledState();
+    
+    commGoodFlag = messageDropCounter <= 10;
+    if ( !commGoodFlag ) {
+      notEnabledState();     // comm lost stop everything
     } else {
-      // There are no new data packets to control the robot, turn everything off so
-      // the robot doesn't continue issuing the last received commands
-      disabledState();
+      if ( rxdata.enabled ) {   // receiveing enable
+        // An update was received recently, process the data packet
+        enabledState();
+      } else {
+        // There are no new data packets to control the robot, or not enabled
+        // turn everything off so the robot doesn't continue issuing the last received commands
+        notEnabledState();
+      }
     }
     lastMessageCounter = rxdata.counter;
-    
-    delay(10);   // delay between each read
-  }
-  //delay for good measure before write routine
-  delay(10);
-
+  }   //  end of comm op
+  
   //  check for TEST mode
   if ( !digitalRead( TEST_SWITCH2_PIN_4)  ) {  // LOW is active
     txdata.buttonstate = MCUCR; // instead of buttonstate, reuse to read register , for no particular reason
@@ -243,7 +263,7 @@ int convertStickToServo(int stickValue) {
 
 
 //////////////  stop all activity if communications not working or disabled
-void disabledState(){
+void notEnabledState(){
   static unsigned long disTimeNow;
   static unsigned long periodLength;
   // One or more conditions are not satisfied to allow the sparky to operate, disable all motors
@@ -259,21 +279,25 @@ void disabledState(){
   txdata.shooterspeedecho = -rxdata.shooterspeed; 
   digitalWrite( GREEN_SHOOT_LED_12, 0 );   // 0 is off
  
-  // do a fast blink or intermitent fast blink if com is good
   disTimeNow = millis();
   if (  lastBlinkToggle + periodLength < disTimeNow ) {
     lastBlinkToggle = disTimeNow;  // triggered and reset.
-    if ( bitRead( PORTB,3) ) {   // this how to read an output pin
-      digitalWrite( LINK_STATUS_LED_11, LOW);
-      // when LOW vary blink length based on if com is good
-      if ( messageDropCounter > 10 )  { 
+    if ( commGoodFlag )  {  // its just the switch off
+      if ( bitRead( PORTB,3) ) {   // this how to read an output pin
+        digitalWrite( LINK_STATUS_LED_11, LOW);
         periodLength = 100;
       } else {
+        digitalWrite( LINK_STATUS_LED_11, HIGH);
+        periodLength = 700;
+      }  
+    } else { // comm down, switch is off, slow blink
+      if ( bitRead( PORTB,3) ) {   // this how to read an output pin
+        digitalWrite( LINK_STATUS_LED_11, LOW);
+        periodLength = 500;
+      } else {
+        digitalWrite( LINK_STATUS_LED_11, HIGH);
         periodLength = 1500;
-      } 
-    } else {
-      digitalWrite( LINK_STATUS_LED_11, HIGH);
-      periodLength = 500;
+      }
     }
   }
 }  // end of disabled state
@@ -284,22 +308,23 @@ void enabledState(){
   int shooterSpeed, rawShooterSpeed;
   static unsigned long shootReleaseTime;
   static int updownVal;
-  
-  if (txdata.leftmotorcommand == servoHaltVal) {
-    updownVal = 512;  //reset, it looks like we just entered enabled mode
-  }
-   
-   
-   // If in the enabled state, the sparky bot is allowed to move 
 
-  // get and filter the stick values
-  int newupdownValDif = rxdata.stickLx - updownVal;
-  if ( newupdownValDif > 1 ) newupdownValDif = 1;
-  if ( newupdownValDif < -1 ) newupdownValDif = -1;
-  if ( updownVal < 522 && updownVal >502 )
-    updownVal += newupdownValDif*64;
-  else
-    updownVal += newupdownValDif;
+//FOR NOW DON'T DO THE FILTER  
+  updownVal = rxdata.stickLx;
+//  if (txdata.leftmotorcommand == servoHaltVal) {
+//    updownVal = 512;  //reset, it looks like we just entered enabled mode
+//  }
+//   
+//   // If in the enabled state, the sparky bot is allowed to move 
+//
+//  // get and filter the stick values
+//  int newupdownValDif = rxdata.stickLx - updownVal;
+//  if ( newupdownValDif > 1 ) newupdownValDif = 1;
+//  if ( newupdownValDif < -1 ) newupdownValDif = -1;
+//  if ( updownVal < 522 && updownVal >502 )
+//    updownVal += newupdownValDif*64;
+//  else
+//    updownVal += newupdownValDif;
   
   // Steer the robot based on selected drive mode
   int leftMotorSpeed = servoHaltVal;
