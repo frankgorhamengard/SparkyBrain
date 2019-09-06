@@ -188,7 +188,7 @@ void loop(){
     
     commGoodFlag = messageDropCounter <= 10;
     if ( !commGoodFlag ) {
-      notEnabledState();     // comm lost stop everything
+      notEnabledState();     // comm lost, stop everything
     } else {
       if ( rxdata.enabled ) {   // receiveing enable
         // An update was received recently, process the data packet
@@ -243,8 +243,8 @@ void loop(){
 // argument:   stick value from receive buffer, 0 - 1023
 // Return:     servo value, 0-179, scaled and profile applied
 // profile:   Apply a deadband to all joystick values so that 
-//            anything between +/-50 from stick center is converted to servo center.
-const long int deadband = 10;
+//            anything between +/-25 from stick center is converted to servo center.
+const long int deadband = 25;
 //------------------------------------------------
 int convertStickToServo(int stickValue) {
   long int longServoValue;  // use longs, 180*1024 > 32768
@@ -374,67 +374,71 @@ void enabledState(){
   shooterSpeed = map(rawShooterSpeed, shootSpeedKnobMin, shootSpeedKnobMax, servoHaltVal-20, servoFullBackVal);
   txdata.shooterspeedecho = shooterSpeed;      // assigning shooterSpeed to echo for testing
   
-  // both operands converted to boolean and compared, this is a logical XOR operation, override inverts ballready
-  if ( (boolean)txdata.ballready == (boolean)digitalRead(BALL_OVERRIDE_2) ) {  // txdata.ballready is the stored synchronous result
-    //  light the green ballLEDs   TBD
-    digitalWrite( GREEN_SHOOT_LED_12, 1 );   // 1 is on
-    // Run the shooter
-    shooterMotor.write(shooterSpeed);
-    if (rxdata.shoot > 0 ) {    // shooter button pressed
-      shootReleaseTime = millis() + 1500;   // trigger and hold shoot even if button released
-    } else {
-      if ( shootReleaseTime < millis() ) {   // if shoot was not triggered yet
-        // Stop the conveyor
-        conveyorMotor.write(servoHaltVal);
-      }
-      else
-      {     // shoot in progress, button not pressed, but ball still present = extend time ubtil after ball is moved
-        shootReleaseTime = millis() + 1500; 
-      }
-    }
-    if (rxdata.intake > 0){  // intake button pressed 
-      // Run the intake for loading extra balls, control only the intake, not the conveyor
-      intakeMotor.write(servoFullBackVal);
-    } else {
-      // Stop the intake
-      intakeMotor.write(servoHaltVal);
-    }
-  } else {   // no ball   //////////////
-    // turn green LEDs off
-    digitalWrite( GREEN_SHOOT_LED_12, 0 );   // 0 is off
-    shooterMotor.write(servoHaltVal);   ///off shooterSpeed);
-    txdata.shooterspeedecho = servoHaltVal;
-    if (rxdata.intake > 0){  // intake button pressed 
-      // Run the intake feed
-      intakeMotor.write(servoFullBackVal);
-      conveyorMotor.write((servoFullBackVal*3)/4);  // (.75 speed)
-      digitalWrite(LINK_DATA_LED_13, LOW); 
-    } else {
-      // Stop the intake
-      intakeMotor.write(servoHaltVal);
-      conveyorMotor.write(servoHaltVal);
-      digitalWrite(LINK_DATA_LED_13, HIGH); 
-    }
-  }
 
-  // if a shoot is in progress
-  if ( shootReleaseTime >= millis() ) {   // if shoot release is in the future
-    // Run the conveyor forward
-    conveyorMotor.write(servoFullBackVal);
-    // ball may be gone from sensor, but shoot still in progress, run shooter motor
-    shooterMotor.write(shooterSpeed);  
-    digitalWrite( GREEN_SHOOT_LED_12, 1 );   // 1 is on
-  }
-  
-  // do a slow blink to show enabled and running
-  if ( lastBlinkToggle < millis()-1000 ) { //if more than a second ago
-    lastBlinkToggle = millis();
-    if ( bitRead( PORTB, 3) ) {   // check the output pin
-      digitalWrite( LINK_STATUS_LED_11, LOW);
-    } else {
-      digitalWrite( LINK_STATUS_LED_11, HIGH);
+  // ##############################  BALL operations, only if NOT  TEST mode ##############
+  if ( digitalRead( TEST_SWITCH2_PIN_4)  ) {  // LOW is active, NOT TEST MODE, continue on
+    // both operands converted to boolean and compared, this is a logical XOR operation, override inverts ballready
+    if ( (boolean)txdata.ballready == (boolean)digitalRead(BALL_OVERRIDE_2) ) {  // txdata.ballready is the stored synchronous result
+      //  light the green ballLEDs
+      digitalWrite( GREEN_SHOOT_LED_12, 1 );   // 1 is on
+      // Run the shooter
+      shooterMotor.write(shooterSpeed);
+      if (rxdata.shoot > 0 ) {    // shooter button pressed
+        shootReleaseTime = millis() + 1500;   // trigger and hold shoot even if button released
+      } else {
+        if ( shootReleaseTime < millis() ) {   // if shoot was not triggered yet
+          // Stop the conveyor
+          conveyorMotor.write(servoHaltVal);
+        }
+        else
+        {     // shoot in progress, button not pressed, but ball still present = extend time ubtil after ball is moved
+          shootReleaseTime = millis() + 1500; 
+        }
+      }
+      if (rxdata.intake > 0){  // intake button pressed 
+        // Run the intake for loading extra balls, control only the intake, not the conveyor
+        intakeMotor.write(servoFullBackVal);
+      } else {
+        // Stop the intake
+        intakeMotor.write(servoHaltVal);
+      }
+    } else {   // no ball   //////////////                                  #################
+      // turn green LEDs off
+      digitalWrite( GREEN_SHOOT_LED_12, 0 );   // 0 is off
+      shooterMotor.write(servoHaltVal);   ///off shooterSpeed);
+      txdata.shooterspeedecho = servoHaltVal;
+      if (rxdata.intake > 0){  // intake button pressed 
+        // Run the intake feed
+        intakeMotor.write(servoFullBackVal);
+        conveyorMotor.write((servoFullBackVal*3)/4);  // (.75 speed)
+        digitalWrite(LINK_DATA_LED_13, LOW); 
+      } else {
+        // Stop the intake
+        intakeMotor.write(servoHaltVal);
+        conveyorMotor.write(servoHaltVal);
+        digitalWrite(LINK_DATA_LED_13, HIGH); 
+      }
     }
-  }
+  
+    // if a shoot is in progress
+    if ( shootReleaseTime >= millis() ) {   // if shoot release is in the future
+      // Run the conveyor forward
+      conveyorMotor.write(servoFullBackVal);
+      // ball may be gone from sensor, but shoot still in progress, run shooter motor
+      shooterMotor.write(shooterSpeed);  
+      digitalWrite( GREEN_SHOOT_LED_12, 1 );   // 1 is on
+    }
+    
+    // do a slow blink to show enabled and running
+    if ( lastBlinkToggle < millis()-1000 ) { //if more than a second ago
+      lastBlinkToggle = millis();
+      if ( bitRead( PORTB, 3) ) {   // check the output pin
+        digitalWrite( LINK_STATUS_LED_11, LOW);
+      } else {
+        digitalWrite( LINK_STATUS_LED_11, HIGH);
+      }
+    }
+  }   //end of NOT TEST MODE
 }   // end of enabledState()
 
 ////////////   doCalibrationSweep   //////////////
@@ -466,8 +470,6 @@ void doCalibrationSweep( Servo *theservo ) {   // note that this routine is bloc
   theservo->write(90);   //servoHaltVal
   delay(1000);   // allow controller to store center value
   digitalWrite( LINK_STATUS_LED_11,  HIGH ); // flip the LED off to end
-  delay(3000);    //before going back to test mode allow time for operator to release the CAL button
-   
   // make a calibration done sound  TBD
 }
 
@@ -507,7 +509,7 @@ void calibrationAndTests(){
     }
   }
  
-  // do a quick blink
+  // do a quick blink to show that we are in test mode, waiting for buttons
   if ( lastBlinkToggle < millis()-100 ) { //if more than a 1/5 second ago
     lastBlinkToggle = millis();
     static int interval = 0;
