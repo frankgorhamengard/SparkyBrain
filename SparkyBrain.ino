@@ -1,5 +1,6 @@
 /*This is code for the Sparky Robot brain with IR ball sensor
  * From SparkyProjects
+ * Sept 8, 2019 
 
 This sketch recieves command values from the control Panel to control the Sparky robot.
 
@@ -243,8 +244,8 @@ void loop(){
 // argument:   stick value from receive buffer, 0 - 1023
 // Return:     servo value, 0-179, scaled and profile applied
 // profile:   Apply a deadband to all joystick values so that 
-//            anything between +/-25 from stick center is converted to servo center.
-const long int deadband = 25;
+//            anything between +/-<deadband value>   from stick center is converted to servo center.
+const long int deadband = 10;   // make this fairly small, the robot can adjuct if outward if needed.
 //------------------------------------------------
 int convertStickToServo(int stickValue) {
   long int longServoValue;  // use longs, 180*1024 > 32768
