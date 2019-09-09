@@ -309,44 +309,42 @@ void notEnabledState(){
 void enabledState(){
   int shooterSpeed, rawShooterSpeed;
   static unsigned long shootReleaseTime;
-  static int updownVal;
-
-//FOR NOW DON'T DO THE FILTER  
-  updownVal = rxdata.stickLx;
-//  if (txdata.leftmotorcommand == servoHaltVal) {
-//    updownVal = 512;  //reset, it looks like we just entered enabled mode
-//  }
-//   
-//   // If in the enabled state, the sparky bot is allowed to move 
-//
-//  // get and filter the stick values
-//  int newupdownValDif = rxdata.stickLx - updownVal;
-//  if ( newupdownValDif > 1 ) newupdownValDif = 1;
-//  if ( newupdownValDif < -1 ) newupdownValDif = -1;
-//  if ( updownVal < 522 && updownVal >502 )
-//    updownVal += newupdownValDif*64;
-//  else
-//    updownVal += newupdownValDif;
   
-  // Steer the robot based on selected drive mode
+  // Steer the robot based usin arcade drive mode
   int leftMotorSpeed = servoHaltVal;
   int rightMotorSpeed = servoHaltVal;
-  if (rxdata.drivemode < 1){
-    // Tank Mode - left joystick control left drive, right joystick controls right drive
-    leftMotorSpeed  = convertStickToServo(updownVal, 25); 
-    rightMotorSpeed = convertStickToServo(rxdata.stickRx, 25);
+
+  // Arcade Mode - FB joystick controls speed, LR joystick controls turning
+  //  speedVal = forward backward command (FB_)
+
+  int speedVal = ( ((long)(rxdata.stickLx)) * 180) >> 10; // /1024; // servo range / stick range 
+  
+  if ( speedVal > servoHaltVal ) {
+    speedVal += 5;
   } else {
-    // Arcade Mode - left joystick controls speed, right joystick controls turning
-    int speedVal = convertStickToServo(updownVal,10);
-    int  turnVal = convertStickToServo(rxdata.stickRy,100);
-    leftMotorSpeed  = speedVal + turnVal - 90;
-    rightMotorSpeed = speedVal - turnVal + 90;
-    
-    if ( leftMotorSpeed < 0  ) leftMotorSpeed  = 0;    // eg.   0   + 0   - 90
-    if ( leftMotorSpeed > 180) leftMotorSpeed  = 180;  // eg.   180 + 180 - 90
-    if (rightMotorSpeed < 0  ) rightMotorSpeed = 0;    // eg.   0   - 180 + 90
-    if (rightMotorSpeed > 180) rightMotorSpeed = 180;  // eg.   180 - 0   + 90
+    if ( speedVal < servoHaltVal ) {
+      speedVal -= 5;
+    }  
   }
+    
+  int turnVal = ( ((long)(rxdata.stickRx)) * 180) >> 10; // /1024; // servo range / stick range 
+  
+  if ( turnVal > servoHaltVal ) {
+    turnVal = ((((turnVal-servoHaltVal)*(128-speedVal))/128) +   servoHaltVal)  +5;
+  } else {
+    if ( turnVal < servoHaltVal ) {
+      turnVal = (servoHaltVal   - (((servoHaltVal-turnVal)*(128-speedVal))/128))  -5;
+    }
+  }
+  
+  leftMotorSpeed  = speedVal + turnVal - 90;
+  rightMotorSpeed = speedVal - turnVal + 90;
+  
+  if ( leftMotorSpeed < 0  ) leftMotorSpeed  = 0;    // eg.   0   + 0   - 90
+  if ( leftMotorSpeed > 180) leftMotorSpeed  = 180;  // eg.   180 + 180 - 90
+  if (rightMotorSpeed < 0  ) rightMotorSpeed = 0;    // eg.   0   - 180 + 90
+  if (rightMotorSpeed > 180) rightMotorSpeed = 180;  // eg.   180 - 0   + 90
+
   // Issue the commanded speed to the drive motors
   // both motors spin full clockwise for 180, left motor mounted opposite direction, so
   if ( txdata.leftmotorcommand != leftMotorSpeed ) {
