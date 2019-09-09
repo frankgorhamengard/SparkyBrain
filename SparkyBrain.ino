@@ -319,21 +319,30 @@ void enabledState(){
 
   int speedVal = ( ((long)(rxdata.stickLx)) * 180) >> 10; // /1024; // servo range / stick range 
   
-  if ( speedVal > servoHaltVal ) {
-    speedVal += 5;
+  const int speedDeadband = 2;
+  const int speedMinVal = 2;
+  if ( speedVal > (servoHaltVal + speedDeadband) ) {
+    speedVal += speedMinVal;
   } else {
-    if ( speedVal < servoHaltVal ) {
-      speedVal -= 5;
-    }  
+    if ( speedVal < (servoHaltVal - speedDeadband) ) {
+      speedVal -= speedMinVal;
+    } else {
+      speedVal = servoHaltVal;
+    }
   }
     
   int turnVal = ( ((long)(rxdata.stickRx)) * 180) >> 10; // /1024; // servo range / stick range 
-  
-  if ( turnVal > servoHaltVal ) {
-    turnVal = ((((turnVal-servoHaltVal)*(128-speedVal))/128) +   servoHaltVal)  +5;
+
+  int speedMagnitude = abs( speedVal - servoHaltVal);
+  const int turnDeadband = 1;
+  const int turnMinVal = 2;
+  if ( turnVal > (servoHaltVal + turnDeadband ) ) {
+    turnVal =   (               (((turnVal-servoHaltVal)*(128-speedMagnitude))/128) + servoHaltVal) +turnMinVal;
   } else {
-    if ( turnVal < servoHaltVal ) {
-      turnVal = (servoHaltVal   - (((servoHaltVal-turnVal)*(128-speedVal))/128))  -5;
+    if ( turnVal < (servoHaltVal - turnDeadband ) ) {
+      turnVal = (servoHaltVal - (((servoHaltVal-turnVal)*(128-speedMagnitude))/128)               ) -turnMinVal;
+    } else {
+      turnVal = servoHaltVal;
     }
   }
   
