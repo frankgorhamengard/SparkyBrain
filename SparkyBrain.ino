@@ -43,9 +43,9 @@ boolean commGoodFlag = false;
 //  declare servo objects
 Servo leftDriveMotor;
 Servo rightDriveMotor;
-Servo intakeMotor;
-Servo conveyorMotor;
-Servo shooterMotor;
+Servo intakeBeltsMotor;
+Servo shootBeltMotor;
+Servo shootWheelMotor;
 
 // Servo ouptut is from 0 to 180
 const int servoHaltVal     = 90;   // 90 is no motion
@@ -115,11 +115,11 @@ const int myPulseWidthMin =1000;
   leftDriveMotor.attach(3,myPulseWidthMin,myPulseWidthMax);
                             pinMode( TEST_SWITCH2_PIN_4, INPUT_PULLUP);
   rightDriveMotor.attach(5,myPulseWidthMin,myPulseWidthMax);
-  intakeMotor.attach(6,myPulseWidthMin,myPulseWidthMax);
-  shooterMotor.attach(7,myPulseWidthMin,myPulseWidthMax);
+  intakeBeltsMotor.attach(6,myPulseWidthMin,myPulseWidthMax);
+  shootWheelMotor.attach(7,myPulseWidthMin,myPulseWidthMax);
                            digitalWrite( HC05_POWER_LOW_ON_8, HIGH);  // make sure the HC-05 power starts out off 
                            pinMode(HC05_POWER_LOW_ON_8, OUTPUT);  //  pin 8 used to power on Bluetooth module
-  conveyorMotor.attach(9,myPulseWidthMin,myPulseWidthMax);
+  shootBeltMotor.attach(9,myPulseWidthMin,myPulseWidthMax);
                             pinMode(BALL_SEEN_10, INPUT_PULLUP);  //  
                             pinMode(LINK_STATUS_LED_11, OUTPUT);  
                             pinMode(GREEN_SHOOT_LED_12, OUTPUT); // drive signal for spike on green LEDs
@@ -245,10 +245,11 @@ void loop(){
 // Return:     servo value, 0-179, scaled and profile applied
 // profile:   Apply a deadband to all joystick values so that 
 //            anything between +/-<deadband value>   from stick center is converted to servo center.
-const long int deadband = 10;   // make this fairly small, the robot can adjuct if outward if needed.
+// const long int deadband = 10;   // make this fairly small, the robot can adjuct if outward if needed.
 //------------------------------------------------
-int convertStickToServo(int stickValue) {
+int convertStickToServo(int stickValue, int deadbandValue) {
   long int longServoValue;  // use longs, 180*1024 > 32768
+  long int deadband = deadbandValue;
 
   if ( stickValue > (stickHaltVal + deadband) ) {
     longServoValue = ( ((long)(stickValue - deadband)) * 180) >> 10; // /1024; // servo range / stick range
@@ -274,9 +275,9 @@ void notEnabledState(){
   txdata.leftmotorcommand = servoHaltVal;
   rightDriveMotor.write(servoHaltVal);
   txdata.rightmotorcommand = servoHaltVal;
-  intakeMotor.write(servoHaltVal);
-  conveyorMotor.write(servoHaltVal);
-  shooterMotor.write(servoHaltVal);
+  intakeBeltsMotor.write(servoHaltVal);
+  shootBeltMotor.write(servoHaltVal);
+  shootWheelMotor.write(servoHaltVal);
   txdata.shooterspeedecho = -rxdata.shooterspeed; 
   digitalWrite( GREEN_SHOOT_LED_12, 0 );   // 0 is off
  
@@ -332,12 +333,12 @@ void enabledState(){
   int rightMotorSpeed = servoHaltVal;
   if (rxdata.drivemode < 1){
     // Tank Mode - left joystick control left drive, right joystick controls right drive
-    leftMotorSpeed  = convertStickToServo(updownVal); 
-    rightMotorSpeed = convertStickToServo(rxdata.stickRx);
+    leftMotorSpeed  = convertStickToServo(updownVal, 25); 
+    rightMotorSpeed = convertStickToServo(rxdata.stickRx, 25);
   } else {
     // Arcade Mode - left joystick controls speed, right joystick controls turning
-    int speedVal = convertStickToServo(updownVal);
-    int  turnVal = convertStickToServo(rxdata.stickRy);
+    int speedVal = convertStickToServo(updownVal,10);
+    int  turnVal = convertStickToServo(rxdata.stickRy,100);
     leftMotorSpeed  = speedVal + turnVal - 90;
     rightMotorSpeed = speedVal - turnVal + 90;
     
@@ -349,11 +350,11 @@ void enabledState(){
   // Issue the commanded speed to the drive motors
   // both motors spin full clockwise for 180, left motor mounted opposite direction, so
   if ( txdata.leftmotorcommand != leftMotorSpeed ) {
-    leftDriveMotor.write(leftMotorSpeed); // left wheel must spin opposite
+    leftDriveMotor.write(leftMotorSpeed); // left wheel clockwise is forward
     txdata.leftmotorcommand = leftMotorSpeed;
   }
   if ( txdata.rightmotorcommand != rightMotorSpeed ) {
-    rightDriveMotor.write(180 - rightMotorSpeed);
+    rightDriveMotor.write(180 - rightMotorSpeed);   // right heel must spin opposite
     txdata.rightmotorcommand = rightMotorSpeed;
   }
   
@@ -383,13 +384,13 @@ void enabledState(){
       //  light the green ballLEDs
       digitalWrite( GREEN_SHOOT_LED_12, 1 );   // 1 is on
       // Run the shooter
-      shooterMotor.write(shooterSpeed);
+      shootWheelMotor.write(shooterSpeed);
       if (rxdata.shoot > 0 ) {    // shooter button pressed
         shootReleaseTime = millis() + 1500;   // trigger and hold shoot even if button released
       } else {
         if ( shootReleaseTime < millis() ) {   // if shoot was not triggered yet
           // Stop the conveyor
-          conveyorMotor.write(servoHaltVal);
+          shootBeltMotor.write(servoHaltVal);
         }
         else
         {     // shoot in progress, button not pressed, but ball still present = extend time ubtil after ball is moved
@@ -397,26 +398,26 @@ void enabledState(){
         }
       }
       if (rxdata.intake > 0){  // intake button pressed 
-        // Run the intake for loading extra balls, control only the intake, not the conveyor
-        intakeMotor.write(servoFullBackVal);
+        // Run the intake for loading extra balls, control only the intake belts, not the shoot belt
+        intakeBeltsMotor.write(servoFullBackVal);
       } else {
         // Stop the intake
-        intakeMotor.write(servoHaltVal);
+        intakeBeltsMotor.write(servoHaltVal);
       }
     } else {   // no ball   //////////////                                  #################
       // turn green LEDs off
       digitalWrite( GREEN_SHOOT_LED_12, 0 );   // 0 is off
-      shooterMotor.write(servoHaltVal);   ///off shooterSpeed);
+      shootWheelMotor.write(servoHaltVal);   ///off shooterSpeed);
       txdata.shooterspeedecho = servoHaltVal;
       if (rxdata.intake > 0){  // intake button pressed 
-        // Run the intake feed
-        intakeMotor.write(servoFullBackVal);
-        conveyorMotor.write((servoFullBackVal*3)/4);  // (.75 speed)
+        // Run the intake belts, shoot belt runs until a ball is detected ready 
+        intakeBeltsMotor.write(servoFullBackVal);
+        shootBeltMotor.write((servoFullBackVal*3)/4);  // (.75 speed)
         digitalWrite(LINK_DATA_LED_13, LOW); 
       } else {
         // Stop the intake
-        intakeMotor.write(servoHaltVal);
-        conveyorMotor.write(servoHaltVal);
+        intakeBeltsMotor.write(servoHaltVal);
+        shootBeltMotor.write(servoHaltVal);
         digitalWrite(LINK_DATA_LED_13, HIGH); 
       }
     }
@@ -424,9 +425,9 @@ void enabledState(){
     // if a shoot is in progress
     if ( shootReleaseTime >= millis() ) {   // if shoot release is in the future
       // Run the conveyor forward
-      conveyorMotor.write(servoFullBackVal);
+      shootBeltMotor.write(servoFullBackVal);
       // ball may be gone from sensor, but shoot still in progress, run shooter motor
-      shooterMotor.write(shooterSpeed);  
+      shootWheelMotor.write(shooterSpeed);  
       digitalWrite( GREEN_SHOOT_LED_12, 1 );   // 1 is on
     }
     
@@ -490,9 +491,9 @@ void calibrationAndTests(){
       if ( ++intakeButtonCount >= 2 ) {   // intake button still pressed, start a cal
         intakeButtonCount = 0;  // count was seen, reset and do a CAL
         if (rxdata.shoot > 0 ) { // shooter button now also pressed
-          doCalibrationSweep( &shooterMotor );
+          doCalibrationSweep( &shootWheelMotor );
         } else {   // only the intake pressed
-          doCalibrationSweep( &intakeMotor );
+          doCalibrationSweep( &intakeBeltsMotor );
         }
         afterCalDwellTimeEnd = millis() + 2000; // don't start another test for 2 seconds
       }
@@ -503,9 +504,9 @@ void calibrationAndTests(){
       if ( ++shootButtonCount >= 2 ) {   // intake button still pressed, start a cal
         shootButtonCount = 0;  // count was seen, reset 
         if (rxdata.intake > 0 ) { // intake button now also pressed
-          doCalibrationSweep( &shooterMotor );
+          doCalibrationSweep( &shootWheelMotor );
         } else {   // only the intake pressed
-          doCalibrationSweep( &conveyorMotor );
+          doCalibrationSweep( &shootBeltMotor );
         }
         afterCalDwellTimeEnd = millis() + 2000; // don't start another test for 2 seconds
       }
