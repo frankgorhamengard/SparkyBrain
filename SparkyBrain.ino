@@ -198,19 +198,19 @@ void loop(){
         // There are no new data packets to control the robot, or not enabled
         // turn everything off so the robot doesn't continue issuing the last received commands
         notEnabledState();
+        //  check for TEST mode
+        if ( !digitalRead( TEST_SWITCH2_PIN_4)  ) {  // LOW is active
+          txdata.buttonstate = MCUCR; // instead of buttonstate, reuse to read register , for no particular reason
+          calibrationAndTests();      // run testing routine, returns immediately unless cal is signaled
+        } else {
+          txdata.buttonstate = -1;  // TEST not active
+        }
       }
     }
     lastMessageCounter = rxdata.counter;
   }   //  end of comm op
   
-  //  check for TEST mode
-  if ( !digitalRead( TEST_SWITCH2_PIN_4)  ) {  // LOW is active
-    txdata.buttonstate = MCUCR; // instead of buttonstate, reuse to read register , for no particular reason
-    calibrationAndTests();      // run testing routine, returns immediately unless cal is signaled
-  } else {
-    txdata.buttonstate = -1;  // TEST not active
-  }
-
+      
   // scale and filter the voltage reading, accum is 16 times reading
   VIN_accum = VIN_accum - (VIN_accum>>4)  + ((analogRead(VIN_PIN_A0)*32)/20);
   txdata.supplyvoltagereading = VIN_accum>>4;
@@ -499,6 +499,10 @@ void calibrationAndTests(){
         intakeButtonCount = 0;  // count was seen, reset and do a CAL
         if (rxdata.shoot > 0 ) { // shooter button now also pressed
           doCalibrationSweep( &shootWheelMotor );
+        } else if(rxdata.stickRx > 650) {
+          doCalibrationSweep(&leftDriveMotor );
+        } else if(rxdata.stickRx < 400) {
+          doCalibrationSweep(&rightDriveMotor );
         } else {   // only the intake pressed
           doCalibrationSweep( &intakeBeltsMotor );
         }
