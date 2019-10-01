@@ -192,9 +192,9 @@ void loop(){
       messageDropCounter = 0;
     }
     
-    commGoodFlag = messageDropCounter <= 10;
+    commGoodFlag = (messageDropCounter <= 17);
     if ( !commGoodFlag ) {
-      if( now%60 == 1)
+      if( (now%60) == 1)
         tone(A3, 50, 10); 
       notEnabledState();     // comm lost, stop everything
     } else {
