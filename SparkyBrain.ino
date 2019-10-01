@@ -1,7 +1,8 @@
 /*This is code for the Sparky Robot brain with IR ball sensor
  * From SparkyProjects
  * Sept 8, 2019 
-
+ * adding tones sept 28
+ * 
 This sketch recieves command values from the control Panel to control the Sparky robot.
 
 It has an LED to indcate link status
@@ -77,6 +78,8 @@ const int VIN_PIN_A0          = A0;
 
 ///////////////////// SETUP, called once at start ///////////////////////////////////////////////
 void setup(){
+  tone(A3, 300, 500); 
+ 
   // Serial is connected throught the Bluetooth modules to the master
   Serial.begin(9600);
   while (!Serial) ; // wait for serial port to connect. Needed for native USB
@@ -145,6 +148,8 @@ const int myPulseWidthMin =1000;
   commGoodFlag = false;
 
   digitalWrite( HC05_POWER_LOW_ON_8, LOW);  // this turns on power to the HC-05
+  delay(200);
+  tone(A3, 500, 1000); 
 }
 
 ///////    the MAIN asynchronous loop, called repeatedly    /////////////////////////////
@@ -189,6 +194,8 @@ void loop(){
     
     commGoodFlag = messageDropCounter <= 10;
     if ( !commGoodFlag ) {
+      if( now%60 == 1)
+        tone(A3, 50, 10); 
       notEnabledState();     // comm lost, stop everything
     } else {
       if ( rxdata.enabled ) {   // receiveing enable
@@ -461,6 +468,7 @@ void doCalibrationSweep( Servo *theservo ) {   // note that this routine is bloc
     theservo->write( i );
     delay(50);
     digitalWrite( LINK_STATUS_LED_11,  !bitRead( PORTB,3) ); // flip the LED fast
+    tone(A3, 300+(i*2), 100); 
   }
   theservo->write(0); 
   delay(1000);  // allow time for controller to store minimum value
@@ -468,6 +476,7 @@ void doCalibrationSweep( Servo *theservo ) {   // note that this routine is bloc
     theservo->write( i );
     delay(50);
     digitalWrite( LINK_STATUS_LED_11,  !bitRead( PORTB,3) ); // flip the LED fast
+    tone(A3, 300+(i*2), 100); 
   }
   theservo->write(180); 
   delay(1000);   // allow time for controller to store maximum value
@@ -475,11 +484,14 @@ void doCalibrationSweep( Servo *theservo ) {   // note that this routine is bloc
     theservo->write( i );
     delay(50);
     digitalWrite( LINK_STATUS_LED_11,  !bitRead( PORTB,3) ); // flip the LED fast
+    tone(A3, 300+(i*2), 100); 
  }
   theservo->write(90);   //servoHaltVal
+  
   delay(1000);   // allow controller to store center value
   digitalWrite( LINK_STATUS_LED_11,  HIGH ); // flip the LED off to end
-  // make a calibration done sound  TBD
+  // make a calibration done sound
+  tone(A3, 1000, 500); 
   delay(3000);    //before going back to test mode allow time for operator to release the CAL button
   // comm was down during calibration so make sure these are off to prevent retrigger
   rxdata.intake = LOW;      // the low active switches on the panel are inverted before sending
