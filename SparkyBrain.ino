@@ -56,6 +56,10 @@ const int servoFullBackVal = 0;    // 0 is full reverse
 // Stick input is from 0 to 1023
 const int stickHaltVal     = 512;   // this is center, no motion
 
+// store value that was written to servo for comparison
+int leftmotorcommand = servoHaltVal;
+int rightmotorcommand = servoHaltVal;
+
 // declare EEPROM addresses and variables to store values locally
 const int maxKnobAddr = 0;
 int16_t shootSpeedKnobMax;  // size of int16_t is always 2
@@ -64,6 +68,7 @@ int16_t shootSpeedKnobMin;
 
 //  declare the transfer buffers
 TO_SPARKY_DATA_STRUCTURE rxdata;
+TO_SPARKY_PACKET_STRUCTURE rxpacket;
 FROM_SPARKY_DATA_STRUCTURE txdata;
 
 const int BALL_OVERRIDE_2      = 2;
@@ -87,27 +92,38 @@ void setup(){
   Serial.write("Code for the Sparky Robot brain with IR ball sensor 20190824");
 
   //start the library, pass in the data details and the name of the serial port.
-  ETin.begin(details(rxdata), &Serial);
+  ETin.begin(details(rxpacket), &Serial);
   ETout.begin(details(txdata), &Serial);
 
   // set transmitter buffer to default values
-  txdata.buttonstate = HIGH;
+  //txdata.buttonstate = HIGH;
   txdata.supplyvoltagereading = analogRead(VIN_PIN_A0);
   txdata.ballready = false;
   txdata.packetreceivedcount = 0;
 
   // init rxdata to safe values, in case they are used before first packet sets them
   rxdata.stickLx = stickHaltVal;
-  rxdata.stickLy = stickHaltVal;
-  rxdata.stickLbutton = LOW;
+///  rxdata.stickLy = stickHaltVal;
+  //rxdata.stickLbutton = LOW;
   rxdata.stickRx = stickHaltVal;
   rxdata.stickRy = stickHaltVal;
-  rxdata.stickRbutton = LOW;
+  //rxdata.stickRbutton = LOW;
+  rxdata.shooterspeed = shootSpeedKnobMin; //  lowest known speed
   rxdata.intake = LOW;      // the low active switches on the panel are inverted before sending
   rxdata.shoot = LOW;       // so now all 4 are high active
   rxdata.drivemode = LOW;
   rxdata.enabled = LOW;
   rxdata.counter = -1;
+
+  // init rxpacket to safe values, in case they are used before first packet sets them
+  rxpacket.stickLx = stickHaltVal;
+///  rxdata.stickLy = stickHaltVal;
+  //rxdata.stickLbutton = LOW;
+  rxpacket.stickRx = stickHaltVal;
+  rxpacket.stickRy = stickHaltVal;
+  //rxdata.stickRbutton = LOW;
+  rxpacket.packedControls = shootSpeedKnobMin;   // all packet bits are 0
+  rxpacket.counter = -1;
 
 const int myPulseWidthMax = 2000;
 const int myPulseWidthMin =1000;
@@ -142,7 +158,6 @@ const int myPulseWidthMin =1000;
     EEPROM.put( maxKnobAddr, shootSpeedKnobMax);
   }
 
-  rxdata.shooterspeed = shootSpeedKnobMin; //  lowest known speed
   afterCalDwellTimeEnd = millis();  // setting to now means the dwell is over, no dwell required
 
   commGoodFlag = false;
@@ -180,8 +195,28 @@ void loop(){
       txdata.packetreceivedcount++;
       lastUpdateTime = millis();
     }
-      
-    // each time, we will unconditionally go ahead and send the data out
+
+// ######################## UNPACK CONTROL DATA ###############################
+    rxdata.stickLx = rxpacket.stickLx;
+    //  rxdata.stickLy = stickHaltVal;
+    //rxdata.stickLbutton = LOW;
+    rxdata.stickRx = rxpacket.stickRx;
+    rxdata.stickRy = rxpacket.stickRy;
+    //rxdata.stickRbutton = LOW;
+    int tmp = rxpacket.packedControls;
+    rxdata.shooterspeed = tmp & 0x03FF; 
+    tmp >> 10;
+    rxdata.intake = tmp & 1;      
+    tmp >> 1;
+    rxdata.shoot = tmp & 1;       
+    tmp >> 1;
+    rxdata.drivemode = tmp & 1;
+    tmp >> 1;
+    rxdata.enabled = tmp & 1;
+    rxdata.counter = rxpacket.counter;
+
+// do transmit
+    // each time, we will unconditionally go ahead and send the tx data out
     txdata.transmitpacketcount++;
     ETout.sendData();
 
@@ -207,10 +242,10 @@ void loop(){
         notEnabledState();
         //  check for TEST mode
         if ( !digitalRead( TEST_SWITCH2_PIN_4)  ) {  // LOW is active
-          txdata.buttonstate = MCUCR; // instead of buttonstate, reuse to read register , for no particular reason
+          //txdata.buttonstate = MCUCR; // instead of buttonstate, reuse to read register , for no particular reason
           calibrationAndTests();      // run testing routine, returns immediately unless cal is signaled
         } else {
-          txdata.buttonstate = -1;  // TEST not active
+          //txdata.buttonstate = -1;  // TEST not active
         }
       }
     }
@@ -279,13 +314,13 @@ void notEnabledState(){
 
   // Set all speed controllers to output 0V.
   leftDriveMotor.write(servoHaltVal);
-  txdata.leftmotorcommand = servoHaltVal;
+  leftmotorcommand = servoHaltVal;
   rightDriveMotor.write(servoHaltVal);
-  txdata.rightmotorcommand = servoHaltVal;
+  rightmotorcommand = servoHaltVal;
   intakeBeltsMotor.write(servoHaltVal);
   shootBeltMotor.write(servoHaltVal);
   shootWheelMotor.write(servoHaltVal);
-  txdata.shooterspeedecho = -rxdata.shooterspeed; 
+  //txdata.shooterspeedecho = -rxdata.shooterspeed; 
   digitalWrite( GREEN_SHOOT_LED_12, 0 );   // 0 is off
  
   disTimeNow = millis();
@@ -363,13 +398,13 @@ void enabledState(){
 
   // Issue the commanded speed to the drive motors
   // both motors spin full clockwise for 180, left motor mounted opposite direction, so
-  if ( txdata.leftmotorcommand != leftMotorSpeed ) {
+  if ( leftmotorcommand != leftMotorSpeed ) {
     leftDriveMotor.write(leftMotorSpeed); // left wheel clockwise is forward
-    txdata.leftmotorcommand = leftMotorSpeed;
+    leftmotorcommand = leftMotorSpeed;
   }
-  if ( txdata.rightmotorcommand != rightMotorSpeed ) {
+  if ( rightmotorcommand != rightMotorSpeed ) {
     rightDriveMotor.write(180 - rightMotorSpeed);   // right heel must spin opposite
-    txdata.rightmotorcommand = rightMotorSpeed;
+    rightmotorcommand = rightMotorSpeed;
   }
   
 ///////  INTAKE FUNCTIONS: INTAKE ALWAYS ENABLED, LOADER ONLY ENABLED WHEN BALL IS NOT IN SHOOTER  ////////////
@@ -388,7 +423,7 @@ void enabledState(){
   }
   // Map the potentiometer dial (min to max) to a valid positive shooter speed (90+20 to 180), 20 is min speed
   shooterSpeed = map(rawShooterSpeed, shootSpeedKnobMin, shootSpeedKnobMax, servoHaltVal-20, servoFullBackVal);
-  txdata.shooterspeedecho = shooterSpeed;      // assigning shooterSpeed to echo for testing
+  //txdata.shooterspeedecho = shooterSpeed;      // assigning shooterSpeed to echo for testing
   
 
   // ##############################  BALL operations, only if NOT  TEST mode ##############
@@ -422,7 +457,7 @@ void enabledState(){
       // turn green LEDs off
       digitalWrite( GREEN_SHOOT_LED_12, 0 );   // 0 is off
       shootWheelMotor.write(servoHaltVal);   ///off shooterSpeed);
-      txdata.shooterspeedecho = servoHaltVal;
+      //txdata.shooterspeedecho = servoHaltVal;
       if (rxdata.intake > 0){  // intake button pressed 
         // Run the intake belts, shoot belt runs until a ball is detected ready 
         intakeBeltsMotor.write(servoFullBackVal);
